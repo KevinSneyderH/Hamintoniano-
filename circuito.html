@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <link rel="stylesheet" href="circuito.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circuito Hamiltoniano - Simulador de Reparto</title>
+</head>
+<body>
+    <div class="header">
+        <h1>🚚 Circuito Hamiltoniano</h1>
+        <p>Simulador de Rutas de Reparto - Visita cada ciudad exactamente una vez</p>
+    </div>
+
+    <div class="game-container">
+        <div class="graph-container" id="graphContainer">
+            <!-- Conexiones (líneas entre ciudades) -->
+            <div class="connection" id="conn-A-B"></div>
+            <div class="connection" id="conn-A-C"></div>
+            <div class="connection" id="conn-B-D"></div>
+            <div class="connection" id="conn-C-E"></div>
+            <div class="connection" id="conn-D-F"></div>
+            <div class="connection" id="conn-E-F"></div>
+            <div class="connection" id="conn-A-E"></div>
+            <div class="connection" id="conn-B-F"></div>
+            <div class="connection" id="conn-C-D"></div>
+
+            <!-- Ciudades -->
+            <div class="city city-a" id="cityA" data-city="A">
+                <span>Ciudad A</span>
+            </div>
+            <div class="city city-b" id="cityB" data-city="B">
+                <span>Ciudad B</span>
+            </div>
+            <div class="city city-c" id="cityC" data-city="C">
+                <span>Ciudad C</span>
+            </div>
+            <div class="city city-d" id="cityD" data-city="D">
+                <span>Ciudad D</span>
+            </div>
+            <div class="city city-e" id="cityE" data-city="E">
+                <span>Ciudad E</span>
+            </div>
+            <div class="city city-f" id="cityF" data-city="F">
+                <span>Ciudad F</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn btn-secondary" onclick="resetRoute()">🔄 Reiniciar</button>
+            <button class="btn btn-primary" onclick="validateRoute()">✅ Verificar Circuito</button>
+            <button class="btn btn-success" onclick="showSolution()">💡 Mostrar Solución</button>
+        </div>
+
+        <div class="status" id="status">
+            <h3>Estado del Recorrido</h3>
+            <div class="route-display" id="routeDisplay">Ruta: Ninguna seleccionada</div>
+            <p id="statusMessage">Haz clic en una ciudad para comenzar el recorrido</p>
+        </div>
+
+        <div class="instructions">
+            <h4>📋 Instrucciones:</h4>
+            <ul>
+                <li>Haz clic en las ciudades para crear tu ruta de reparto</li>
+                <li>Debes visitar cada ciudad exactamente una vez</li>
+                <li>Debes regresar a la ciudad de inicio para completar el circuito</li>
+                <li>Las líneas se iluminarán mostrando las conexiones válidas</li>
+                <li>Usa "Verificar Circuito" para validar tu solución</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Variables del juego
+        let currentRoute = [];
+        let startCity = null;
+        let gameComplete = false;
+
+        // Definir las conexiones válidas entre ciudades
+        const connections = {
+            'A': ['B', 'C', 'E'],
+            'B': ['A', 'D', 'F'],
+            'C': ['A', 'D', 'E'],
+            'D': ['B', 'C', 'F'],
+            'E': ['A', 'C', 'F'],
+            'F': ['B', 'D', 'E']
+        };
+
+        // Inicializar el juego
+        function initializeGame() {
+            drawConnections();
+            setupCityClickHandlers();
+            updateDisplay();
+        }
+
+        // Dibujar las conexiones entre ciudades
+        function drawConnections() {
+            const cities = {
+                'A': { x: 130, y: 80 },
+                'B': { x: 470, y: 80 },
+                'C': { x: 80, y: 230 },
+                'D': { x: 520, y: 230 },
+                'E': { x: 180, y: 380 },
+                'F': { x: 420, y: 380 }
+            };
+
+            const connectionPairs = [
+                ['A', 'B'], ['A', 'C'], ['A', 'E'],
+                ['B', 'D'], ['B', 'F'],
+                ['C', 'D'], ['C', 'E'],
+                ['D', 'F'],
+                ['E', 'F']
+            ];
+
+            connectionPairs.forEach(([city1, city2]) => {
+                const conn = document.getElementById(`conn-${city1}-${city2}`) || 
+                            document.getElementById(`conn-${city2}-${city1}`);
+                if (conn) {
+                    const pos1 = cities[city1];
+                    const pos2 = cities[city2];
+                    
+                    const dx = pos2.x - pos1.x;
+                    const dy = pos2.y - pos1.y;
+                    const length = Math.sqrt(dx * dx + dy * dy);
+                    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+                    conn.style.left = pos1.x + 'px';
+                    conn.style.top = pos1.y + 'px';
+                    conn.style.width = length + 'px';
+                    conn.style.transform = `rotate(${angle}deg)`;
+                }
+            });
+        }
+
+        // Configurar event handlers para las ciudades
+        function setupCityClickHandlers() {
+            document.querySelectorAll('.city').forEach(city => {
+                city.addEventListener('click', () => handleCityClick(city.dataset.city));
+            });
+        }
+
+        // Manejar clic en ciudad
+        function handleCityClick(cityName) {
+            if (gameComplete) return;
+
+            // Si es la primera ciudad
+            if (currentRoute.length === 0) {
+                startCity = cityName;
+                currentRoute.push(cityName);
+                updateCityVisual(cityName, 'current');
+                updateDisplay();
+                return;
+            }
+
+            // Verificar si la conexión es válida
+            const lastCity = currentRoute[currentRoute.length - 1];
+            if (!connections[lastCity].includes(cityName)) {
+                showMessage("❌ No hay conexión directa entre estas ciudades", "error");
+                return;
+            }
+
+            // Verificar si la ciudad ya fue visitada (excepto si es la ciudad inicial y estamos cerrando el circuito)
+            const isClosingCircuit = cityName === startCity && currentRoute.length === 6;
+            if (currentRoute.includes(cityName) && !isClosingCircuit) {
+                showMessage("⚠️ Esta ciudad ya fue visitada", "warning");
+                return;
+            }
+
+            // Agregar ciudad a la ruta
+            currentRoute.push(cityName);
+            
+            // Actualizar visuales
+            updateCityVisual(lastCity, 'visited');
+            if (!isClosingCircuit) {
+                updateCityVisual(cityName, 'current');
+            } else {
+                updateCityVisual(cityName, 'visited');
+                gameComplete = true;
+                showMessage("🎉 ¡Circuito Hamiltoniano completado!", "success");
+            }
+
+            // Activar conexión
+            activateConnection(lastCity, cityName);
+            updateDisplay();
+        }
+
+        // Actualizar visual de ciudad
+        function updateCityVisual(cityName, state) {
+            const cityElement = document.getElementById(`city${cityName}`);
+            cityElement.classList.remove('visited', 'current');
+            if (state !== 'normal') {
+                cityElement.classList.add(state);
+            }
+        }
+
+        // Activar conexión visual
+        function activateConnection(city1, city2) {
+            const conn = document.getElementById(`conn-${city1}-${city2}`) || 
+                        document.getElementById(`conn-${city2}-${city1}`);
+            if (conn) {
+                conn.classList.add('active');
+            }
+        }
+
+        // Actualizar display de información
+        function updateDisplay() {
+            const routeDisplay = document.getElementById('routeDisplay');
+            const statusMessage = document.getElementById('statusMessage');
+
+            if (currentRoute.length === 0) {
+                routeDisplay.textContent = 'Ruta: Ninguna seleccionada';
+                statusMessage.textContent = 'Haz clic en una ciudad para comenzar el recorrido';
+            } else {
+                routeDisplay.textContent = `Ruta: ${currentRoute.join(' → ')}`;
+                
+                if (gameComplete) {
+                    statusMessage.textContent = '🎉 ¡Circuito Hamiltoniano válido completado!';
+                } else {
+                    const remaining = 6 - currentRoute.length + 1; // +1 para regresar al inicio
+                    statusMessage.textContent = `Ciudades restantes por visitar: ${remaining}`;
+                }
+            }
+        }
+
+        // Mostrar mensaje temporal
+        function showMessage(message, type) {
+            const statusMessage = document.getElementById('statusMessage');
+            const originalMessage = statusMessage.textContent;
+            
+            statusMessage.textContent = message;
+            statusMessage.style.color = type === 'error' ? '#ff5252' : 
+                                      type === 'warning' ? '#ffc107' : '#4caf50';
+            
+            setTimeout(() => {
+                statusMessage.textContent = originalMessage;
+                statusMessage.style.color = '';
+            }, 2000);
+        }
+
+        // Validar circuito
+        function validateRoute() {
+            if (currentRoute.length === 0) {
+                showMessage("❌ No hay ruta para validar", "error");
+                return;
+            }
+
+            const isComplete = currentRoute.length === 7 && currentRoute[0] === currentRoute[6];
+            const visitedAllCities = new Set(currentRoute.slice(0, -1)).size === 6;
+            
+            if (isComplete && visitedAllCities) {
+                showMessage("✅ ¡Circuito Hamiltoniano válido!", "success");
+            } else if (currentRoute.length === 6 && !currentRoute.includes(startCity)) {
+                showMessage("⚠️ Falta regresar a la ciudad de inicio", "warning");
+            } else {
+                showMessage("❌ Circuito incompleto o inválido", "error");
+            }
+        }
+
+        // Reiniciar ruta
+        function resetRoute() {
+            currentRoute = [];
+            startCity = null;
+            gameComplete = false;
+            
+            // Limpiar visuales
+            document.querySelectorAll('.city').forEach(city => {
+                city.classList.remove('visited', 'current');
+            });
+            
+            document.querySelectorAll('.connection').forEach(conn => {
+                conn.classList.remove('active');
+            });
+            
+            updateDisplay();
+            showMessage("🔄 Juego reiniciado", "success");
+        }
+
+        // Mostrar una solución válida
+        function showSolution() {
+            resetRoute();
+            const solution = ['A', 'B', 'D', 'F', 'E', 'C', 'A'];
+            
+            let index = 0;
+            const interval = setInterval(() => {
+                if (index < solution.length) {
+                    handleCityClick(solution[index]);
+                    index++;
+                } else {
+                    clearInterval(interval);
+                    showMessage("💡 Solución demostrada", "success");
+                }
+            }, 1000);
+        }
+
+        // Inicializar cuando se carga la página
+        window.addEventListener('load', initializeGame);
+    </script>
+</body>
+</html>
